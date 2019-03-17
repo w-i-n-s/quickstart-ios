@@ -23,7 +23,7 @@ import FirebaseMLVision
 @objc(CameraViewController)
 class CameraViewController: UIViewController {
 
-  private let detectors: [Detector] = [.onDeviceFace, .onDeviceText]
+  private let detectors: [Detector] = [.onDeviceFace, .onDeviceText, .onDeviceBarcode]
   private var currentDetector: Detector = .onDeviceFace
   private var isUsingFrontCamera = true
   private var previewLayer: AVCaptureVideoPreviewLayer!
@@ -197,6 +197,36 @@ class CameraViewController: UIViewController {
       }
     }
   }
+    
+    private func recognizeBarcodeOnDevice(in image: VisionImage, width: CGFloat, height: CGFloat) {
+        let barcodeDetector = vision.barcodeDetector()
+        barcodeDetector.detect(in: image, completion: { (barcodes, error) in
+            guard let list = barcodes, !list.isEmpty else { return }
+            
+            DispatchQueue.main.async {
+                for code in list {
+                    let normalizedRect = CGRect(
+                        x: code.frame.origin.x / width,
+                        y: code.frame.origin.y / height,
+                        width: code.frame.size.width / width,
+                        height: code.frame.size.height / height
+                    )
+                    let standardizedRect =
+                        self.previewLayer.layerRectConverted(fromMetadataOutputRect: normalizedRect).standardized
+                    UIUtilities.addRectangle(
+                        standardizedRect,
+                        to: self.annotationOverlayView,
+                        color: UIColor.green
+                    )
+                }
+            }
+        })
+        
+        DispatchQueue.main.sync {
+            self.updatePreviewOverlayView()
+            self.removeDetectionAnnotations()
+        }
+    }
 
   // MARK: - Private
 
@@ -555,6 +585,8 @@ extension CameraViewController: AVCaptureVideoDataOutputSampleBufferDelegate {
       detectFacesOnDevice(in: visionImage, width: imageWidth, height: imageHeight)
     case .onDeviceText:
       recognizeTextOnDevice(in: visionImage, width: imageWidth, height: imageHeight)
+    case .onDeviceBarcode:
+        recognizeBarcodeOnDevice(in: visionImage, width: imageWidth, height: imageHeight)
     }
   }
 }
@@ -564,6 +596,7 @@ extension CameraViewController: AVCaptureVideoDataOutputSampleBufferDelegate {
 public enum Detector: String {
   case onDeviceFace = "On-Device Face Detection"
   case onDeviceText = "On-Device Text Recognition"
+  case onDeviceBarcode = "On-Device QR & Barcodes"
 }
 
 private enum Constant {
